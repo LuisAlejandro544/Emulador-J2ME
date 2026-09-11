@@ -1,0 +1,6 @@
+{
+  "name": "J2ME Emulator",
+  "description": "Menú y gestor de juegos J2ME para seleccionar y organizar archivos .jar desde el almacenamiento",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

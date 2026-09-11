@@ -1,0 +1,53 @@
+*.iml
+.gradle
+.kotlin
+/local.properties
+/.idea/caches
+/.idea/libraries
+/.idea/modules.xml
+/.idea/workspace.xml
+/.idea/navEditor.xml
+/.idea/assetWizardSettings.xml
+.DS_Store
+/build
+app/build
+/captures
+.externalNativeBuild
+.cxx
+app/.cxx
+local.properties
+.env
+debug.keystore
+
+# ==========================================
+# Rust & Cargo Artefactos de compilación
+# ==========================================
+target/
+**/target/
+Cargo.lock
+**/*.rs.bk
+*.rs.bk
+
+# ==========================================
+# C++ / CMake / NDK Artefactos
+# ==========================================
+**/build/
+**/.cxx/
+**/CMakeFiles/
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+Makefile
+*.ninja
+*.ninja_deps
+*.ninja_log
+
+# ==========================================
+# Librerías nativas compiladas intermedias
+# ==========================================
+*.so
+*.a
+*.o
+*.dylib
+*.dll
+

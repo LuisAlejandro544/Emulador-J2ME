@@ -1,0 +1,13 @@
+[package]
+name = "j2me_core"
+version = "0.1.0"
+edition = "2021"
+authors = ["J2ME Emulator Team"]
+description = "Núcleo de emulación J2ME en Rust (intérprete de bytecode JVM / CLDC y memoria segura)"
+
+[lib]
+name = "j2me_core"
+crate-type = ["staticlib", "cdylib"]
+
+[dependencies]
+# Dependencias estándar del ecosistema Rust para el núcleo J2ME
