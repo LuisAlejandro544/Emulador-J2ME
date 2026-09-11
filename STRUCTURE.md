@@ -31,6 +31,7 @@ Este documento detalla la estructura física y lógica de directorios del proyec
             │       ├── ui/
             │       │   ├── J2meMenuScreen.kt  # Interfaz del emulador (pantalla retro y controles)
             │       │   ├── J2meNativeBridge.kt# Puente JNI que enlaza con C++ y Rust
+            │       │   ├── J2meManifestInfo.kt# Modelo de datos para metadatos MIDlet parseados
             │       │   └── theme/             # Sistema de diseño y temas visuales
             │       └── javax/                 # (Próximo) Implementación de APIs J2ME en Java
             │           └── microedition/
@@ -41,19 +42,20 @@ Este documento detalla la estructura física y lógica de directorios del proyec
             │
             ├── cpp/               # Capa C++ (Abstracción de Hardware & JNI)
             │   ├── CMakeLists.txt # Script de compilación de CMake, invoca a Cargo y compila C++
-            │   ├── native-lib.cpp # Implementación de métodos nativos JNI y llamadas FFI
+            │   ├── native-lib.cpp # Implementación de métodos nativos JNI y llamadas FFI (incluye puente JAR)
             │   └── graphics/      # (Próximo) Renderizador nativo OpenGL ES
             │
             ├── rust/              # Capa Rust (Núcleo de la Máquina Virtual)
             │   └── j2me_core/
-            │       ├── Cargo.toml # Definición del paquete Rust, cdylib y staticlib
+            │       ├── Cargo.toml # Definición del paquete Rust con miniz_oxide
             │       ├── .cargo/
             │       │   └── config.toml # Linkers de NDK para ARM32, ARM64, x86, x86_64
             │       └── src/
-            │           ├── lib.rs # Punto de entrada FFI con C (`extern "C"`)
-            │           ├── class/ # (Próximo) Parser de archivos .class y Constant Pool
-            │           ├── vm/    # (Próximo) Intérprete de bytecode, pila y registros
-            │           └── jar/   # (Próximo) Lector y descompresor de paquetes JAR
+            │           ├── lib.rs          # Punto de entrada FFI con C (`extern "C"`)
+            │           ├── jar_parser.rs   # Parser seguro de archivos JAR, ZIP y MANIFEST.MF
+            │           ├── class_parser.rs # Parser binario de archivos .class, Constant Pool y Code
+            │           └── vm/
+            │               └── mod.rs      # Pila de operandos, variables locales, StackFrame e intérprete de opcodes
             │
             └── res/               # Recursos de interfaz (iconos, temas, layouts)
 ```

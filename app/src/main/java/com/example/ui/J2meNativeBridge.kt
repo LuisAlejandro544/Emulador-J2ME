@@ -47,4 +47,36 @@ object J2meNativeBridge {
      * Libera la memoria y recursos del motor nativo.
      */
     external fun cleanupCore()
+
+    /**
+     * Carga y parsea un archivo JAR desde su contenido en bytes utilizando el parser seguro en Rust.
+     */
+    external fun loadJarFromBytes(jarBytes: ByteArray): Boolean
+
+    /**
+     * Obtiene el manifiesto parseado en formato JSON desde el núcleo Rust.
+     */
+    external fun getJarManifestJson(): String?
+
+    /**
+     * Extrae un recurso o clase (.class / imagen) desde el JAR en memoria.
+     */
+    external fun extractJarResource(resourcePath: String): ByteArray?
+
+    /**
+     * Inspecciona una clase Java (.class) en el archivo JAR cargado actualmente en memoria.
+     * Retorna una cadena JSON con la superclase, métodos, tamaños de pila y firmas decodificadas.
+     */
+    external fun inspectJarClass(className: String): String?
+
+    /**
+     * Parsea directamente un arreglo binario de bytes de una clase Java (.class) y retorna su JSON.
+     */
+    external fun parseClassBytes(classBytes: ByteArray): String?
+
+    /**
+     * Ejecuta directamente un bloque de bytecode binario de JVM en el intérprete de Rust.
+     * Retorna un arreglo de dos enteros: [código de estado (0=éxito, <0=error), valor retornado].
+     */
+    external fun executeBytecode(bytecode: ByteArray, maxStack: Int, maxLocals: Int): IntArray?
 }

@@ -14,13 +14,26 @@
 //! 5. Enlace FFI con C++: Exporta funciones mediante `extern "C"` con convención C estándar
 //!    para ser consumidas directamente por la capa C++ y el puente JNI de Android.
 
-use std::ffi::CString;
+use std::ffi::{CStr, CString};
 use std::os::raw::c_char;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::Mutex;
+
+pub mod jar_parser;
+use jar_parser::JarArchive;
+
+pub mod class_parser;
+use class_parser::JavaClassFile;
+
+pub mod vm;
+use vm::{ExecutionResult, StackFrame, Value};
 
 /// Estado global del motor de emulación en Rust
 static CORE_INITIALIZED: AtomicBool = AtomicBool::new(false);
 static INSTRUCTION_CYCLE_COUNT: AtomicU64 = AtomicU64::new(0);
+
+/// Búfer en memoria del último JAR cargado
+static CURRENT_JAR_DATA: Mutex<Option<Vec<u8>>> = Mutex::new(None);
 
 /// Cadena constante con la versión del núcleo Rust
 const CORE_VERSION: &str = "0.1.0-alpha (Rust JVM/CLDC Core)";
@@ -83,4 +96,264 @@ pub extern "C" fn j2me_core_execute_cycle() -> u64 {
 pub extern "C" fn j2me_core_cleanup() {
     CORE_INITIALIZED.store(false, Ordering::SeqCst);
     INSTRUCTION_CYCLE_COUNT.store(0, Ordering::SeqCst);
+    if let Ok(mut lock) = CURRENT_JAR_DATA.lock() {
+        *lock = None;
+    }
 }
+
+/// Carga un paquete JAR desde un búfer en memoria proporcionado por C++/JNI.
+/// Retorna:
+/// - 0 si fue parseado correctamente.
+/// - Menor a 0 si hubo un error de parseo o archivo inválido.
+#[no_mangle]
+pub unsafe extern "C" fn j2me_core_load_jar(bytes: *const u8, length: usize) -> i32 {
+    if bytes.is_null() || length == 0 {
+        return -1;
+    }
+
+    let slice = std::slice::from_raw_parts(bytes, length);
+    match JarArchive::parse(slice) {
+        Ok(_) => {
+            if let Ok(mut lock) = CURRENT_JAR_DATA.lock() {
+                *lock = Some(slice.to_vec());
+            }
+            0
+        }
+        Err(_) => -2,
+    }
+}
+
+/// Obtiene los metadatos del manifiesto J2ME en formato JSON C-String.
+/// El puntero retornado debe ser liberado llamando a `j2me_core_free_string`.
+#[no_mangle]
+pub extern "C" fn j2me_core_get_manifest_json() -> *mut c_char {
+    let lock = match CURRENT_JAR_DATA.lock() {
+        Ok(l) => l,
+        Err(_) => return std::ptr::null_mut(),
+    };
+
+    let data = match lock.as_ref() {
+        Some(d) => d,
+        None => return std::ptr::null_mut(),
+    };
+
+    let archive = match JarArchive::parse(data) {
+        Ok(a) => a,
+        Err(_) => return std::ptr::null_mut(),
+    };
+
+    let manifest = match archive.parse_manifest() {
+        Ok(m) => m,
+        Err(_) => return std::ptr::null_mut(),
+    };
+
+    // Construcción de JSON seguro y ligero sin dependencias externas
+    let escape = |s: &str| -> String {
+        s.replace('\\', "\\\\")
+            .replace('"', "\\\"")
+            .replace('\n', "\\n")
+            .replace('\r', "\\r")
+    };
+
+    let json = format!(
+        "{{\"midletName\":\"{}\",\"vendor\":\"{}\",\"version\":\"{}\",\"profile\":\"{}\",\"configuration\":\"{}\",\"mainClass\":\"{}\",\"iconPath\":\"{}\",\"filesCount\":{}}}",
+        escape(&manifest.midlet_name),
+        escape(&manifest.midlet_vendor),
+        escape(&manifest.midlet_version),
+        escape(&manifest.microedition_profile),
+        escape(&manifest.microedition_configuration),
+        escape(&manifest.main_class),
+        escape(&manifest.icon_path),
+        archive.list_files().len()
+    );
+
+    match CString::new(json) {
+        Ok(c_str) => c_str.into_raw(),
+        Err(_) => std::ptr::null_mut(),
+    }
+}
+
+/// Extrae un recurso o clase del JAR por su nombre.
+/// Escribe el puntero al búfer y su longitud en `out_data` y `out_len`.
+/// Retorna 0 en éxito, menor a 0 en fallo.
+#[no_mangle]
+pub unsafe extern "C" fn j2me_core_read_jar_resource(
+    filename: *const c_char,
+    out_data: *mut *mut u8,
+    out_len: *mut usize,
+) -> i32 {
+    if filename.is_null() || out_data.is_null() || out_len.is_null() {
+        return -1;
+    }
+
+    let c_str = CStr::from_ptr(filename);
+    let name = match c_str.to_str() {
+        Ok(s) => s,
+        Err(_) => return -2,
+    };
+
+    let lock = match CURRENT_JAR_DATA.lock() {
+        Ok(l) => l,
+        Err(_) => return -3,
+    };
+
+    let data = match lock.as_ref() {
+        Some(d) => d,
+        None => return -4,
+    };
+
+    let archive = match JarArchive::parse(data) {
+        Ok(a) => a,
+        Err(_) => return -5,
+    };
+
+    match archive.read_file(name) {
+        Ok(content) => {
+            let mut boxed_slice = content.into_boxed_slice();
+            *out_len = boxed_slice.len();
+            *out_data = boxed_slice.as_mut_ptr();
+            std::mem::forget(boxed_slice); // Transferir posesión a la capa receptora
+            0
+        }
+        Err(_) => -6,
+    }
+}
+
+/// Libera la memoria de una cadena C asignada por Rust.
+#[no_mangle]
+pub unsafe extern "C" fn j2me_core_free_string(ptr: *mut c_char) {
+    if !ptr.is_null() {
+        drop(CString::from_raw(ptr));
+    }
+}
+
+/// Libera la memoria de un búfer de bytes de recurso asignado por Rust.
+#[no_mangle]
+pub unsafe extern "C" fn j2me_core_free_resource_bytes(ptr: *mut u8, length: usize) {
+    if !ptr.is_null() && length > 0 {
+        let slice = std::slice::from_raw_parts_mut(ptr, length);
+        drop(Box::from_raw(slice.as_mut_ptr()));
+    }
+}
+
+/// Parsea un archivo `.class` a partir de un búfer binario en memoria.
+/// Retorna un resumen en formato JSON con la clase, superclase, métodos y bytecodes.
+/// La cadena retornada debe liberarse llamando a `j2me_core_free_string`.
+#[no_mangle]
+pub unsafe extern "C" fn j2me_core_parse_class_bytes(
+    bytes: *const u8,
+    length: usize,
+) -> *mut c_char {
+    if bytes.is_null() || length == 0 {
+        return std::ptr::null_mut();
+    }
+
+    let slice = std::slice::from_raw_parts(bytes, length);
+    match JavaClassFile::parse(slice) {
+        Ok(class_file) => {
+            let json = class_file.to_summary_json();
+            match CString::new(json) {
+                Ok(c_str) => c_str.into_raw(),
+                Err(_) => std::ptr::null_mut(),
+            }
+        }
+        Err(_) => std::ptr::null_mut(),
+    }
+}
+
+/// Busca una clase en el archivo JAR cargado actualmente, la parsea y retorna su resumen JSON.
+/// La cadena retornada debe liberarse llamando a `j2me_core_free_string`.
+#[no_mangle]
+pub unsafe extern "C" fn j2me_core_inspect_jar_class(class_name: *const c_char) -> *mut c_char {
+    if class_name.is_null() {
+        return std::ptr::null_mut();
+    }
+
+    let c_str = CStr::from_ptr(class_name);
+    let name = match c_str.to_str() {
+        Ok(s) => s,
+        Err(_) => return std::ptr::null_mut(),
+    };
+
+    // Formatear la ruta esperada dentro del archivo JAR (ej. "com/game/Main.class")
+    let normalized_path = if name.ends_with(".class") {
+        name.to_string()
+    } else {
+        format!("{}.class", name.replace('.', "/"))
+    };
+
+    let lock = match CURRENT_JAR_DATA.lock() {
+        Ok(l) => l,
+        Err(_) => return std::ptr::null_mut(),
+    };
+
+    let data = match lock.as_ref() {
+        Some(d) => d,
+        None => return std::ptr::null_mut(),
+    };
+
+    let archive = match JarArchive::parse(data) {
+        Ok(a) => a,
+        Err(_) => return std::ptr::null_mut(),
+    };
+
+    match archive.read_file(&normalized_path) {
+        Ok(class_bytes) => match JavaClassFile::parse(&class_bytes) {
+            Ok(class_file) => {
+                let json = class_file.to_summary_json();
+                match CString::new(json) {
+                    Ok(c_str) => c_str.into_raw(),
+                    Err(_) => std::ptr::null_mut(),
+                }
+            }
+            Err(_) => std::ptr::null_mut(),
+        },
+        Err(_) => std::ptr::null_mut(),
+    }
+}
+
+/// Ejecuta un bloque de bytecode de JVM con los límites de pila y variables dados.
+/// Retorna 0 en caso de éxito y almacena el resultado en `out_result`.
+/// Retorna menor a 0 si ocurrió una excepción de VM o error de límites.
+#[no_mangle]
+pub unsafe extern "C" fn j2me_core_execute_bytecode(
+    bytecode: *const u8,
+    bytecode_len: usize,
+    max_stack: u16,
+    max_locals: u16,
+    out_result: *mut i32,
+) -> i32 {
+    if bytecode.is_null() || bytecode_len == 0 {
+        return -1;
+    }
+
+    let slice = std::slice::from_raw_parts(bytecode, bytecode_len).to_vec();
+    let mut frame = StackFrame::new(
+        max_stack.max(1) as usize,
+        max_locals.max(1) as usize,
+        slice,
+        "nativeInvokedMethod",
+    );
+
+    match frame.run_to_completion(100_000) {
+        Ok(ExecutionResult::ReturnValue(Value::Int(v))) => {
+            if !out_result.is_null() {
+                *out_result = v;
+            }
+            0
+        }
+        Ok(ExecutionResult::ReturnVoid) => {
+            if !out_result.is_null() {
+                *out_result = 0;
+            }
+            0
+        }
+        Ok(ExecutionResult::Continue) => {
+            // Se agotaron los ciclos máximos (posible bucle infinito)
+            -2
+        }
+        Ok(_) => 0,
+        Err(_) => -3,
+    }
+}
+

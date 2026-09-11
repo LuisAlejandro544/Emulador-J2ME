@@ -7,7 +7,8 @@ description = "Núcleo de emulación J2ME en Rust (intérprete de bytecode JVM /
 
 [lib]
 name = "j2me_core"
-crate-type = ["staticlib", "cdylib"]
+crate-type = ["staticlib"]
 
 [dependencies]
-# Dependencias estándar del ecosistema Rust para el núcleo J2ME
+# Descompresión Deflate 100% Rust pura sin build scripts nativos de host
+miniz_oxide = "0.9.1"

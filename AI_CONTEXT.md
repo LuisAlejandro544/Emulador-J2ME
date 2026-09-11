@@ -12,7 +12,7 @@ Este documento contiene el contexto de dominio, restricciones arquitectónicas e
 
 2. **Rol Estricto de los Tres Lenguajes**:
    - **Java**: Se usa para definir las APIs originales de J2ME que los juegos esperan (`javax.microedition.*`) y el contenedor de aplicaciones.
-   - **Rust**: Se encarga del intérprete de la máquina virtual (JVM/CLDC), procesamiento de bytecode, parser de clases binarias y control seguro de memoria.
+   - **Rust**: Se encarga del parser seguro de contenedores JAR/ZIP (`jar_parser.rs`), extracción de `MANIFEST.MF`, intérprete de la máquina virtual (JVM/CLDC), procesamiento de bytecode, parser de clases binarias y control seguro de memoria.
    - **C++**: Se encarga del renderizado gráfico nativo de alta velocidad (OpenGL ES), subsistema de audio nativo (AAudio/Oboe) y la interfaz JNI con Android.
 
 3. **Arquitecturas y Compatibilidad**:

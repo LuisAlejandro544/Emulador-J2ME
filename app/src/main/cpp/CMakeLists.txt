@@ -34,21 +34,27 @@ endif()
 set(RUST_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../rust/j2me_core")
 set(RUST_LIB_PATH "${RUST_DIR}/target/${RUST_TARGET}/release/libj2me_core.a")
 
+# Detección de fuentes en Rust para recompilación automática cuando cambien
+file(GLOB_RECURSE RUST_SOURCES "${RUST_DIR}/src/*.rs" "${RUST_DIR}/Cargo.toml")
+
 # Comando para invocar Cargo y compilar el núcleo en Rust de manera automática
 add_custom_command(
     OUTPUT "${RUST_LIB_PATH}"
     COMMAND ${CMAKE_COMMAND} -E env "${RUST_LINKER_ENV}" cargo build --manifest-path "${RUST_DIR}/Cargo.toml" --target "${RUST_TARGET}" --release
     WORKING_DIRECTORY "${RUST_DIR}"
+    DEPENDS ${RUST_SOURCES}
     COMMENT "Compilando núcleo J2ME en Rust para arquitectura ${ANDROID_ABI} (${RUST_TARGET})..."
     VERBATIM
 )
 
-add_custom_target(build_rust_core DEPENDS "${RUST_LIB_PATH}")
+add_custom_target(
+    build_rust_core
+    DEPENDS "${RUST_LIB_PATH}"
+)
 
 # Declaración de la librería estática de Rust para ser enlazada en C++
-add_library(j2me_rust_core STATIC IMPORTED)
+add_library(j2me_rust_core STATIC IMPORTED GLOBAL)
 set_target_properties(j2me_rust_core PROPERTIES IMPORTED_LOCATION "${RUST_LIB_PATH}")
-add_dependencies(j2me_rust_core build_rust_core)
 
 # Librería nativa compartida (C++) que contiene el puente JNI para Android
 add_library(
@@ -56,6 +62,8 @@ add_library(
     SHARED
     native-lib.cpp
 )
+
+add_dependencies(j2me_native build_rust_core)
 
 # Configuración del estándar C++ moderno
 set_target_properties(j2me_native PROPERTIES

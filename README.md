@@ -21,6 +21,9 @@ Este proyecto recrea ese ecosistema en dispositivos Android modernos aprovechand
 ## 📱 Características Principales
 
 - **Arquitectura Nativa Híbrida**: Máximo rendimiento sin ralentizaciones en arquitecturas de 32 bits (`armeabi-v7a`) y 64 bits (`arm64-v8a`, `x86_64`).
+- **Parser de Paquetes JAR en Rust**: Descompresión en memoria segura (Deflate RFC 1951 con `miniz_oxide`) e inspección instantánea de `META-INF/MANIFEST.MF` (nombre, versión, autor, icono y clase de inicio `MIDlet-1`).
+- **Parser Binario de Clases Java (.class)**: Decodificación estricta y segura del formato binario ClassFile (`0xCAFEBABE`), Constant Pool tipado (strings, enteros, floats, clases, métodos), tabla de métodos y extracción de secuencias de bytecode (`Code`).
+- **Núcleo de Ejecución JVM CLDC (Rust)**: Pila de operandos (`OperandStack`) con protección de desbordamiento, tabla de variables locales (`LocalVariables`), marco de activación (`StackFrame`) e intérprete de opcodes estándar (constantes, aritmética entera, operaciones de pila, saltos condicionales y retornos).
 - **Control Táctil Fiel**: Interfaz con teclado alfanumérico retro (0-9, *, #), D-Pad direccional, tecla de acción central y SoftKeys de menú.
 - **Gestión de Memoria Segura**: El núcleo en Rust previene fugas de memoria y fallos de segmentación al parsear archivos JAR/JAD corruptos.
 - **Compatibilidad Extensible**: Diseñado para soportar juegos clásicos de 128x128, 176x208, 240x320 y pantallas táctiles de 360x640.

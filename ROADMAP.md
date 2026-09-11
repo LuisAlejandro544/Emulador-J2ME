@@ -15,21 +15,34 @@ Este documento define la ruta de evolución técnica y las fases estratégicas p
 
 ---
 
-### ⏳ Fase 2: Parser de Archivos JAR/JAD y Formato .class (En Progreso)
-- [ ] Lector de archivos ZIP/JAR en Rust para descomprimir y listar entradas.
-- [ ] Parser del manifiesto `MANIFEST.MF` (detección de `MIDlet-1`, versión CLDC/MIDP y tamaño).
-- [ ] Parser binario de archivos `.class` de Java:
-  - Constant Pool (Utf8, Integer, Float, Methodref, Fieldref, Class).
-  - Tabla de métodos, firmas y atributos `Code`.
-  - Pila de operandos y variables locales de la JVM.
+### ✅ Fase 2: Parser de Archivos JAR/JAD y Formato .class (Completada)
+- [x] Lector de archivos ZIP/JAR en Rust para descomprimir y listar entradas (`jar_parser.rs`).
+- [x] Parser del manifiesto `MANIFEST.MF` (detección de `MIDlet-1`, versión CLDC/MIDP, nombre, autor e icono).
+- [x] Extracción en memoria de recursos binarios e imágenes del JAR vía FFI / JNI.
+- [x] Parser binario de archivos `.class` de Java (`class_parser.rs`):
+  - Constant Pool tipado (Utf8, Integer, Float, Long, Double, Methodref, Fieldref, Class, NameAndType).
+  - Tabla de métodos, firmas, campos y modificadores de acceso.
+  - Decodificación del atributo `Code`: secuencia de bytecode, tabla de excepciones, `max_stack` y `max_locals`.
+  - Inspección directa de clases de un JAR en memoria y serialización diagnóstica en JSON vía FFI/JNI.
 
 ---
 
-### 🔄 Fase 3: Intérprete de Bytecode y Máquina Virtual CLDC (Rust)
-- [ ] Bucle principal de ejecución de opcodes (instrucciones estándar de JVM de 1 byte).
-- [ ] Soporte de instrucciones aritméticas, de salto condicional (`ifeq`, `if_icmpne`, etc.) y de pila (`iload`, `istore`, `dup`, `swap`).
+### 🔄 Fase 3: Intérprete de Bytecode y Máquina Virtual CLDC (Rust - En Progreso)
+- [x] Estructuras fundamentales del Runtime de la JVM (`vm/mod.rs`):
+  - `Value`: Representación tipada de valores enteros, flotantes, long, double, referencias y null.
+  - `OperandStack`: Pila de operandos con protección ante StackOverflow y StackUnderflow.
+  - `LocalVariables`: Tabla de variables locales indexadas y comprobación de límites.
+  - `StackFrame`: Marco de pila con contador de programa (`pc`), pila, variables locales y bytecode.
+- [x] Intérprete de opcodes estándar de JVM (CLDC):
+  - Constantes y carga: `nop`, `aconst_null`, `iconst_m1..5`, `bipush`, `sipush`.
+  - Carga y almacenamiento local: `iload`, `aload`, `iload_0..3`, `aload_0..3`, `istore`, `astore`, `istore_0..3`, `astore_0..3`.
+  - Operaciones de pila: `pop`, `dup`, `swap`.
+  - Aritmética entera y lógica: `iadd`, `isub`, `imul`, `idiv`, `irem`, `ineg`, `iand`, `ior`, `ixor`, `iinc`.
+  - Saltos condicionales y branching: `ifeq`, `ifne`, `iflt`, `ifge`, `ifgt`, `ifle`, `if_icmpeq..le`, `goto`.
+  - Control de retorno: `ireturn`, `areturn`, `return`.
+- [x] Exposición en FFI y JNI (`executeBytecode`) para ejecución y pruebas directas desde Kotlin/C++.
 - [ ] Manejo de llamadas a métodos (`invokevirtual`, `invokestatic`, `invokespecial`).
-- [ ] Asignador de memoria para objetos e instancias de clases de forma segura.
+- [ ] Asignador de memoria para objetos e instancias de clases de forma segura (Heap).
 
 ---
 

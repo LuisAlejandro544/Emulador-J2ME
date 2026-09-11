@@ -4,6 +4,8 @@ import android.content.Context
 import android.net.Uri
 import android.provider.OpenableColumns
 import com.example.data.J2meGame
+import com.example.ui.J2meManifestInfo
+import com.example.ui.J2meNativeBridge
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.ByteArrayOutputStream
@@ -63,10 +65,10 @@ object J2meJarParser {
             }
         }
 
-        // 2. Extraer metadatos y posible icono desde el contenido ZIP del .jar
-        val parsedInfo = parseZipStream(
+        // 2. Extraer metadatos y posible icono utilizando prioritariamente el motor nativo en Rust
+        val parsedInfo = parseUsingNativeRustOrFallback(
             context = context,
-            inputStreamProvider = { contentResolver.openInputStream(uri) },
+            uri = uri,
             defaultFileName = fileName,
             defaultFileSize = fileSize
         )
@@ -81,6 +83,78 @@ object J2meJarParser {
             fileSizeBytes = parsedInfo.fileSizeBytes,
             iconPath = parsedInfo.iconPath,
             addedTimestamp = System.currentTimeMillis()
+        )
+    }
+
+    /**
+     * Procesa un archivo .jar utilizando el motor de Rust (j2me_core) a través de JNI y C++.
+     */
+    private fun parseUsingNativeRustOrFallback(
+        context: Context,
+        uri: Uri,
+        defaultFileName: String,
+        defaultFileSize: Long
+    ): ParsedJarInfo {
+        if (J2meNativeBridge.isNativeLoaded()) {
+            try {
+                val jarBytes = context.contentResolver.openInputStream(uri)?.use { it.readBytes() }
+                if (jarBytes != null && jarBytes.isNotEmpty()) {
+                    val loaded = J2meNativeBridge.loadJarFromBytes(jarBytes)
+                    if (loaded) {
+                        val manifestJson = J2meNativeBridge.getJarManifestJson()
+                        if (!manifestJson.isNullOrBlank()) {
+                            val manifest = J2meManifestInfo.fromJson(manifestJson)
+
+                            // Intentar extraer el icono mediante el motor de Rust
+                            var savedIconFilePath: String? = null
+                            val iconCandidates = listOfNotNull(
+                                manifest.iconPath.takeIf { it.isNotBlank() },
+                                "icon.png",
+                                "/icon.png"
+                            )
+
+                            for (candidate in iconCandidates) {
+                                val cleanCandidate = candidate.trim().removePrefix("/")
+                                val iconBytes = J2meNativeBridge.extractJarResource(cleanCandidate)
+                                if (iconBytes != null && iconBytes.isNotEmpty()) {
+                                    val iconDir = File(context.filesDir, "j2me_icons")
+                                    if (!iconDir.exists()) iconDir.mkdirs()
+                                    val iconFile = File(iconDir, "icon_${System.currentTimeMillis()}_${(1000..9999).random()}.png")
+                                    iconFile.writeBytes(iconBytes)
+                                    savedIconFilePath = iconFile.absolutePath
+                                    break
+                                }
+                            }
+
+                            val fallbackTitle = defaultFileName.substringBeforeLast(".jar")
+                                .replace('_', ' ')
+                                .replace('-', ' ')
+                                .trim()
+                                .ifBlank { "Juego J2ME" }
+
+                            return ParsedJarInfo(
+                                title = manifest.midletName.ifBlank { fallbackTitle },
+                                vendor = manifest.vendor.ifBlank { "Desconocido" },
+                                version = manifest.version.ifBlank { "1.0" },
+                                mainClass = manifest.mainClass,
+                                fileName = defaultFileName,
+                                fileSizeBytes = if (defaultFileSize > 0) defaultFileSize else jarBytes.size.toLong(),
+                                iconPath = savedIconFilePath
+                            )
+                        }
+                    }
+                }
+            } catch (e: Exception) {
+                // Si falla el procesamiento nativo, continúa con el fallback
+            }
+        }
+
+        // Fallback en caso de que la biblioteca nativa no esté disponible
+        return parseZipStream(
+            context = context,
+            inputStreamProvider = { context.contentResolver.openInputStream(uri) },
+            defaultFileName = defaultFileName,
+            defaultFileSize = defaultFileSize
         )
     }
 
