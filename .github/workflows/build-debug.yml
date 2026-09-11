@@ -1,0 +1,103 @@
+name: Build Android Debug APK
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-debug-apk:
+    name: Compilar APK Debug (C++, Rust & Java)
+    runs-on: ubuntu-latest
+
+    steps:
+      # 1. Clonar el repositorio completo
+      - name: Descargar código fuente del proyecto
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      # 2. Configurar JDK 17 para Gradle y compilación Android
+      - name: Configurar Java Development Kit (JDK 17)
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      # 3. Configurar Android SDK, NDK y CMake
+      # NDK 27.2.12479018 coincide exactamente con ndkVersion de build.gradle.kts
+      - name: Instalar Android NDK y CMake
+        uses: android-actions/setup-android@v3
+
+      - name: Instalar versión exacta de NDK y CMake
+        run: |
+          yes | sdkmanager --licenses || true
+          sdkmanager --install "ndk;27.2.12479018" "cmake;3.22.1"
+          echo "ANDROID_NDK_ROOT=${ANDROID_SDK_ROOT}/ndk/27.2.12479018" >> $GITHUB_ENV
+          echo "ANDROID_NDK_HOME=${ANDROID_SDK_ROOT}/ndk/27.2.12479018" >> $GITHUB_ENV
+          echo "ANDROID_NDK=${ANDROID_SDK_ROOT}/ndk/27.2.12479018" >> $GITHUB_ENV
+
+      # 4. Configurar Rust y añadir targets para las arquitecturas móviles (32 y 64 bits)
+      - name: Instalar Toolchain de Rust y Targets Android
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: |
+            aarch64-linux-android
+            armv7-linux-androideabi
+            x86_64-linux-android
+            i686-linux-android
+
+      # 5. Descargar dependencias de Rust anticipadamente
+      - name: Descargar dependencias de Rust (Cargo Fetch)
+        working-directory: app/src/main/rust/j2me_core
+        run: |
+          cargo fetch --verbose
+
+      # 6. Forzar generación de firma debug desde cero con el script .sh
+      - name: Generar firma Debug desde cero (sin esperar firmas previas)
+        run: |
+          chmod +x generate_debug_keystore.sh
+          ./generate_debug_keystore.sh
+
+      # 7. Dar permisos de ejecución a los scripts y gradlew
+      - name: Configurar permisos de ejecución
+        run: |
+          chmod +x clean_native_artifacts.sh || true
+          if [ -f "gradlew" ]; then chmod +x gradlew; fi
+
+      # 8. Compilar APK Debug SIN CACHÉ
+      # Usamos --no-build-cache --no-configuration-cache para garantizar compilación limpia desde cero
+      - name: Compilar APK Debug (Sin Caché)
+        run: |
+          if [ -f "./gradlew" ]; then
+            ./gradlew assembleDebug --no-build-cache --no-configuration-cache --stacktrace
+          else
+            gradle assembleDebug --no-build-cache --no-configuration-cache --stacktrace
+          fi
+
+      # 9. Localizar y verificar el APK generado
+      - name: Verificar APK Debug generado
+        run: |
+          echo "Buscando APK Debug generado..."
+          APK_PATH=$(find app/build/outputs/apk/debug -name "*.apk" | head -n 1)
+          if [ -z "${APK_PATH}" ]; then
+            echo "❌ Error: No se encontró el APK Debug generado."
+            exit 1
+          fi
+          echo "✅ APK Debug encontrado: ${APK_PATH}"
+          ls -lh "${APK_PATH}"
+
+      # 10. Subir el APK Debug como artefacto de GitHub Actions
+      - name: Publicar APK Debug como Artefacto
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-debug
+          path: app/build/outputs/apk/debug/*.apk
+          retention-days: 14
+          if-no-files-found: error

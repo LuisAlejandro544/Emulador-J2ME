@@ -17,6 +17,7 @@
 #include <string>
 #include <sstream>
 #include <android/log.h>
+#include "framebuffer.h"
 
 #define LOG_TAG "J2ME_Native"
 #define LOGI(...) __android_log_print(ANDROID_LOG_INFO, LOG_TAG, __VA_ARGS__)
@@ -39,6 +40,11 @@ extern "C" {
     char* j2me_core_parse_class_bytes(const uint8_t* bytes, size_t length);
     char* j2me_core_inspect_jar_class(const char* class_name);
     int32_t j2me_core_execute_bytecode(const uint8_t* bytecode, size_t bytecode_len, uint16_t max_stack, uint16_t max_locals, int32_t* out_result);
+
+    int32_t j2me_core_vm_reset();
+    int32_t j2me_core_vm_load_class(const uint8_t* bytes, size_t length);
+    int32_t j2me_core_vm_execute_method(const char* class_name, const char* method_name, const char* descriptor, int32_t* out_result);
+    char* j2me_core_vm_get_stats();
 }
 
 /**
@@ -313,4 +319,349 @@ Java_com_example_ui_J2meNativeBridge_executeBytecode(
     }
     return result;
 }
+
+/**
+ * Reinicia o inicializa el runtime completo de la Máquina Virtual CLDC en Rust.
+ */
+extern "C" JNIEXPORT jboolean JNICALL
+Java_com_example_ui_J2meNativeBridge_vmReset(
+        JNIEnv* /* env */,
+        jobject /* this */) {
+    int32_t status = j2me_core_vm_reset();
+    return (status == 0) ? JNI_TRUE : JNI_FALSE;
+}
+
+/**
+ * Carga una clase binaria en la Máquina Virtual global en Rust.
+ */
+extern "C" JNIEXPORT jboolean JNICALL
+Java_com_example_ui_J2meNativeBridge_vmLoadClass(
+        JNIEnv* env,
+        jobject /* this */,
+        jbyteArray classBytes) {
+    if (classBytes == nullptr) {
+        return JNI_FALSE;
+    }
+    jsize len = env->GetArrayLength(classBytes);
+    if (len == 0) {
+        return JNI_FALSE;
+    }
+    jbyte* bytes_ptr = env->GetByteArrayElements(classBytes, nullptr);
+    if (bytes_ptr == nullptr) {
+        return JNI_FALSE;
+    }
+
+    int32_t status = j2me_core_vm_load_class(reinterpret_cast<const uint8_t*>(bytes_ptr), static_cast<size_t>(len));
+    env->ReleaseByteArrayElements(classBytes, bytes_ptr, JNI_ABORT);
+
+    return (status == 0) ? JNI_TRUE : JNI_FALSE;
+}
+
+/**
+ * Ejecuta un método de una clase en la VM global resolviendo llamadas e instancias en el Heap.
+ */
+extern "C" JNIEXPORT jintArray JNICALL
+Java_com_example_ui_J2meNativeBridge_vmExecuteMethod(
+        JNIEnv* env,
+        jobject /* this */,
+        jstring className,
+        jstring methodName,
+        jstring descriptor) {
+    if (className == nullptr || methodName == nullptr || descriptor == nullptr) {
+        return nullptr;
+    }
+
+    const char* c_class = env->GetStringUTFChars(className, nullptr);
+    const char* c_method = env->GetStringUTFChars(methodName, nullptr);
+    const char* c_desc = env->GetStringUTFChars(descriptor, nullptr);
+
+    int32_t out_result = 0;
+    int32_t status = j2me_core_vm_execute_method(c_class, c_method, c_desc, &out_result);
+
+    env->ReleaseStringUTFChars(className, c_class);
+    env->ReleaseStringUTFChars(methodName, c_method);
+    env->ReleaseStringUTFChars(descriptor, c_desc);
+
+    jintArray result = env->NewIntArray(2);
+    if (result != nullptr) {
+        jint elems[2] = { status, out_result };
+        env->SetIntArrayRegion(result, 0, 2, elems);
+    }
+    return result;
+}
+
+/**
+ * Obtiene las estadísticas diagnósticas de la VM en formato JSON.
+ */
+extern "C" JNIEXPORT jstring JNICALL
+Java_com_example_ui_J2meNativeBridge_vmGetStats(
+        JNIEnv* env,
+        jobject /* this */) {
+    char* json_ptr = j2me_core_vm_get_stats();
+    if (json_ptr == nullptr) {
+        return nullptr;
+    }
+    jstring result = env->NewStringUTF(json_ptr);
+    j2me_core_free_string(json_ptr);
+    return result;
+}
+
+// ============================================================================
+// SUBSISTEMA GRÁFICO (LCDUI) Y RASTERIZADOR 2D NATIVO
+// ============================================================================
+
+extern "C" JNIEXPORT void JNICALL
+Java_com_example_ui_J2meNativeBridge_graphicsInit(
+        JNIEnv* /* env */,
+        jobject /* this */,
+        jint width,
+        jint height) {
+    j2me::getGlobalFramebuffer().resize(width, height);
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_com_example_ui_J2meNativeBridge_graphicsClear(
+        JNIEnv* /* env */,
+        jobject /* this */,
+        jint argb) {
+    j2me::getGlobalFramebuffer().clear(static_cast<uint32_t>(argb));
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_com_example_ui_J2meNativeBridge_graphicsSetColor(
+        JNIEnv* /* env */,
+        jobject /* this */,
+        jint argb) {
+    j2me::getGlobalFramebuffer().setColor(static_cast<uint32_t>(argb));
+}
+
+extern "C" JNIEXPORT jint JNICALL
+Java_com_example_ui_J2meNativeBridge_graphicsGetColor(
+        JNIEnv* /* env */,
+        jobject /* this */) {
+    return static_cast<jint>(j2me::getGlobalFramebuffer().getColor());
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_com_example_ui_J2meNativeBridge_graphicsSetClip(
+        JNIEnv* /* env */,
+        jobject /* this */,
+        jint x,
+        jint y,
+        jint width,
+        jint height) {
+    j2me::getGlobalFramebuffer().setClip(x, y, width, height);
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_com_example_ui_J2meNativeBridge_graphicsClipRect(
+        JNIEnv* /* env */,
+        jobject /* this */,
+        jint x,
+        jint y,
+        jint width,
+        jint height) {
+    j2me::getGlobalFramebuffer().clipRect(x, y, width, height);
+}
+
+extern "C" JNIEXPORT jboolean JNICALL
+Java_com_example_ui_J2meNativeBridge_graphicsGetClip(
+        JNIEnv* env,
+        jobject /* this */,
+        jintArray outClip) {
+    if (!outClip || env->GetArrayLength(outClip) < 4) return JNI_FALSE;
+    auto& fb = j2me::getGlobalFramebuffer();
+    jint clip[4] = {
+        fb.getClipX(),
+        fb.getClipY(),
+        fb.getClipWidth(),
+        fb.getClipHeight()
+    };
+    env->SetIntArrayRegion(outClip, 0, 4, clip);
+    return JNI_TRUE;
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_com_example_ui_J2meNativeBridge_graphicsTranslate(
+        JNIEnv* /* env */,
+        jobject /* this */,
+        jint dx,
+        jint dy) {
+    j2me::getGlobalFramebuffer().translate(dx, dy);
+}
+
+extern "C" JNIEXPORT jint JNICALL
+Java_com_example_ui_J2meNativeBridge_graphicsGetTranslateX(
+        JNIEnv* /* env */,
+        jobject /* this */) {
+    return j2me::getGlobalFramebuffer().getTranslateX();
+}
+
+extern "C" JNIEXPORT jint JNICALL
+Java_com_example_ui_J2meNativeBridge_graphicsGetTranslateY(
+        JNIEnv* /* env */,
+        jobject /* this */) {
+    return j2me::getGlobalFramebuffer().getTranslateY();
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_com_example_ui_J2meNativeBridge_graphicsDrawLine(
+        JNIEnv* /* env */,
+        jobject /* this */,
+        jint x1,
+        jint y1,
+        jint x2,
+        jint y2) {
+    j2me::getGlobalFramebuffer().drawLine(x1, y1, x2, y2);
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_com_example_ui_J2meNativeBridge_graphicsDrawRect(
+        JNIEnv* /* env */,
+        jobject /* this */,
+        jint x,
+        jint y,
+        jint width,
+        jint height) {
+    j2me::getGlobalFramebuffer().drawRect(x, y, width, height);
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_com_example_ui_J2meNativeBridge_graphicsFillRect(
+        JNIEnv* /* env */,
+        jobject /* this */,
+        jint x,
+        jint y,
+        jint width,
+        jint height) {
+    j2me::getGlobalFramebuffer().fillRect(x, y, width, height);
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_com_example_ui_J2meNativeBridge_graphicsDrawRoundRect(
+        JNIEnv* /* env */,
+        jobject /* this */,
+        jint x,
+        jint y,
+        jint width,
+        jint height,
+        jint arcWidth,
+        jint arcHeight) {
+    j2me::getGlobalFramebuffer().drawRoundRect(x, y, width, height, arcWidth, arcHeight);
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_com_example_ui_J2meNativeBridge_graphicsFillRoundRect(
+        JNIEnv* /* env */,
+        jobject /* this */,
+        jint x,
+        jint y,
+        jint width,
+        jint height,
+        jint arcWidth,
+        jint arcHeight) {
+    j2me::getGlobalFramebuffer().fillRoundRect(x, y, width, height, arcWidth, arcHeight);
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_com_example_ui_J2meNativeBridge_graphicsDrawArc(
+        JNIEnv* /* env */,
+        jobject /* this */,
+        jint x,
+        jint y,
+        jint width,
+        jint height,
+        jint startAngle,
+        jint arcAngle) {
+    j2me::getGlobalFramebuffer().drawArc(x, y, width, height, startAngle, arcAngle);
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_com_example_ui_J2meNativeBridge_graphicsFillArc(
+        JNIEnv* /* env */,
+        jobject /* this */,
+        jint x,
+        jint y,
+        jint width,
+        jint height,
+        jint startAngle,
+        jint arcAngle) {
+    j2me::getGlobalFramebuffer().fillArc(x, y, width, height, startAngle, arcAngle);
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_com_example_ui_J2meNativeBridge_graphicsDrawString(
+        JNIEnv* env,
+        jobject /* this */,
+        jstring text,
+        jint x,
+        jint y,
+        jint anchor) {
+    if (!text) return;
+    const char* c_str = env->GetStringUTFChars(text, nullptr);
+    if (c_str) {
+        j2me::getGlobalFramebuffer().drawString(c_str, x, y, anchor);
+        env->ReleaseStringUTFChars(text, c_str);
+    }
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_com_example_ui_J2meNativeBridge_graphicsDrawRGB(
+        JNIEnv* env,
+        jobject /* this */,
+        jintArray rgbData,
+        jint offset,
+        jint scanlength,
+        jint x,
+        jint y,
+        jint width,
+        jint height,
+        jboolean processAlpha) {
+    if (!rgbData || width <= 0 || height <= 0) return;
+    jint* data = env->GetIntArrayElements(rgbData, nullptr);
+    if (data) {
+        j2me::getGlobalFramebuffer().drawRGB(
+            reinterpret_cast<const uint32_t*>(data),
+            offset, scanlength, x, y, width, height, processAlpha == JNI_TRUE
+        );
+        env->ReleaseIntArrayElements(rgbData, data, JNI_ABORT);
+    }
+}
+
+extern "C" JNIEXPORT jboolean JNICALL
+Java_com_example_ui_J2meNativeBridge_graphicsRenderToBitmap(
+        JNIEnv* env,
+        jobject /* this */,
+        jobject bitmap) {
+    return j2me::getGlobalFramebuffer().copyToAndroidBitmap(env, bitmap) ? JNI_TRUE : JNI_FALSE;
+}
+
+extern "C" JNIEXPORT jboolean JNICALL
+Java_com_example_ui_J2meNativeBridge_graphicsGetPixels(
+        JNIEnv* env,
+        jobject /* this */,
+        jintArray outPixels) {
+    if (!outPixels) return JNI_FALSE;
+    jsize len = env->GetArrayLength(outPixels);
+    jint* data = env->GetIntArrayElements(outPixels, nullptr);
+    if (!data) return JNI_FALSE;
+
+    bool ok = j2me::getGlobalFramebuffer().copyPixelsTo(reinterpret_cast<uint32_t*>(data), len);
+    env->ReleaseIntArrayElements(outPixels, data, 0);
+    return ok ? JNI_TRUE : JNI_FALSE;
+}
+
+extern "C" JNIEXPORT jboolean JNICALL
+Java_com_example_ui_J2meNativeBridge_graphicsGetDimensions(
+        JNIEnv* env,
+        jobject /* this */,
+        jintArray outDims) {
+    if (!outDims || env->GetArrayLength(outDims) < 2) return JNI_FALSE;
+    auto& fb = j2me::getGlobalFramebuffer();
+    jint dims[2] = { fb.getWidth(), fb.getHeight() };
+    env->SetIntArrayRegion(outDims, 0, 2, dims);
+    return JNI_TRUE;
+}
+
+
 

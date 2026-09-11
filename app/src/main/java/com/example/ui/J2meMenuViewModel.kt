@@ -31,6 +31,8 @@ data class MenuUiState(
     val isLoading: Boolean = false,
     /** Juego actualmente seleccionado para ver detalles */
     val selectedGame: J2meGame? = null,
+    /** Juego actualmente en ejecución en la pantalla del emulador */
+    val activeRunningGame: J2meGame? = null,
     /** Juego pendiente de confirmación de eliminación */
     val gameToDelete: J2meGame? = null,
     /** Texto de búsqueda actual para filtrar juegos */
@@ -56,6 +58,7 @@ class J2meMenuViewModel(application: Application) : AndroidViewModel(application
     private val _isLoading = MutableStateFlow(false)
     private val _searchQuery = MutableStateFlow("")
     private val _selectedGame = MutableStateFlow<J2meGame?>(null)
+    private val _activeRunningGame = MutableStateFlow<J2meGame?>(null)
     private val _gameToDelete = MutableStateFlow<J2meGame?>(null)
     private val _userMessage = MutableStateFlow<String?>(null)
 
@@ -67,8 +70,8 @@ class J2meMenuViewModel(application: Application) : AndroidViewModel(application
         _searchQuery,
         _isLoading,
         _selectedGame,
-        _gameToDelete
-    ) { allGames, query, loading, selected, toDelete ->
+        _activeRunningGame
+    ) { allGames, query, loading, selected, running ->
         val filteredGames = if (query.isBlank()) {
             allGames
         } else {
@@ -84,10 +87,12 @@ class J2meMenuViewModel(application: Application) : AndroidViewModel(application
             totalGamesCount = allGames.size,
             isLoading = loading,
             selectedGame = selected,
-            gameToDelete = toDelete,
+            activeRunningGame = running,
             searchQuery = query,
             userMessage = null
         )
+    }.combine(_gameToDelete) { baseState, toDelete ->
+        baseState.copy(gameToDelete = toDelete)
     }.combine(_userMessage) { baseState, message ->
         baseState.copy(userMessage = message)
     }.stateIn(
@@ -132,6 +137,21 @@ class J2meMenuViewModel(application: Application) : AndroidViewModel(application
      */
     fun onGameSelected(game: J2meGame) {
         _selectedGame.value = game
+    }
+
+    /**
+     * Lanza el juego seleccionado en la pantalla interactiva del emulador LCDUI.
+     */
+    fun launchGame(game: J2meGame) {
+        _selectedGame.value = null
+        _activeRunningGame.value = game
+    }
+
+    /**
+     * Cierra la pantalla de emulación activa y regresa a la biblioteca de juegos.
+     */
+    fun closeRunningGame() {
+        _activeRunningGame.value = null
     }
 
     /**

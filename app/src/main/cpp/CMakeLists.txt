@@ -40,7 +40,7 @@ file(GLOB_RECURSE RUST_SOURCES "${RUST_DIR}/src/*.rs" "${RUST_DIR}/Cargo.toml")
 # Comando para invocar Cargo y compilar el núcleo en Rust de manera automática
 add_custom_command(
     OUTPUT "${RUST_LIB_PATH}"
-    COMMAND ${CMAKE_COMMAND} -E env "${RUST_LINKER_ENV}" cargo build --manifest-path "${RUST_DIR}/Cargo.toml" --target "${RUST_TARGET}" --release
+    COMMAND ${CMAKE_COMMAND} -E env "HOME=/root" "RUSTUP_HOME=/root/.rustup" "CARGO_HOME=/root/.cargo" "PATH=/root/.cargo/bin:$ENV{PATH}" "${RUST_LINKER_ENV}" cargo build --manifest-path "${RUST_DIR}/Cargo.toml" --target "${RUST_TARGET}" --release
     WORKING_DIRECTORY "${RUST_DIR}"
     DEPENDS ${RUST_SOURCES}
     COMMENT "Compilando núcleo J2ME en Rust para arquitectura ${ANDROID_ABI} (${RUST_TARGET})..."
@@ -56,11 +56,12 @@ add_custom_target(
 add_library(j2me_rust_core STATIC IMPORTED GLOBAL)
 set_target_properties(j2me_rust_core PROPERTIES IMPORTED_LOCATION "${RUST_LIB_PATH}")
 
-# Librería nativa compartida (C++) que contiene el puente JNI para Android
+# Librería nativa compartida (C++) que contiene el puente JNI y el rasterizador para Android
 add_library(
     j2me_native
     SHARED
     native-lib.cpp
+    framebuffer.cpp
 )
 
 add_dependencies(j2me_native build_rust_core)
@@ -80,6 +81,7 @@ target_include_directories(
 # Localización de las librerías nativas del sistema Android
 find_library(log-lib log)
 find_library(android-lib android)
+find_library(jnigraphics-lib jnigraphics)
 
 # Enlace final: C++ + Rust + Librerías del sistema Android
 target_link_libraries(
@@ -87,4 +89,5 @@ target_link_libraries(
     j2me_rust_core
     ${log-lib}
     ${android-lib}
+    ${jnigraphics-lib}
 )

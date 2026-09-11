@@ -26,7 +26,7 @@ pub mod class_parser;
 use class_parser::JavaClassFile;
 
 pub mod vm;
-use vm::{ExecutionResult, StackFrame, Value};
+use vm::{ExecutionResult, StackFrame, Value, VirtualMachine};
 
 /// Estado global del motor de emulación en Rust
 static CORE_INITIALIZED: AtomicBool = AtomicBool::new(false);
@@ -34,6 +34,9 @@ static INSTRUCTION_CYCLE_COUNT: AtomicU64 = AtomicU64::new(0);
 
 /// Búfer en memoria del último JAR cargado
 static CURRENT_JAR_DATA: Mutex<Option<Vec<u8>>> = Mutex::new(None);
+
+/// Instancia global de la Máquina Virtual CLDC en Rust
+static CURRENT_VM: Mutex<Option<VirtualMachine>> = Mutex::new(None);
 
 /// Cadena constante con la versión del núcleo Rust
 const CORE_VERSION: &str = "0.1.0-alpha (Rust JVM/CLDC Core)";
@@ -98,6 +101,9 @@ pub extern "C" fn j2me_core_cleanup() {
     INSTRUCTION_CYCLE_COUNT.store(0, Ordering::SeqCst);
     if let Ok(mut lock) = CURRENT_JAR_DATA.lock() {
         *lock = None;
+    }
+    if let Ok(mut vm_lock) = CURRENT_VM.lock() {
+        *vm_lock = None;
     }
 }
 
@@ -356,4 +362,127 @@ pub unsafe extern "C" fn j2me_core_execute_bytecode(
         Err(_) => -3,
     }
 }
+
+/// Reinicia o inicializa la Máquina Virtual CLDC global en Rust.
+#[no_mangle]
+pub extern "C" fn j2me_core_vm_reset() -> i32 {
+    let mut vm_lock = match CURRENT_VM.lock() {
+        Ok(l) => l,
+        Err(_) => return -1,
+    };
+    *vm_lock = Some(VirtualMachine::new());
+    0
+}
+
+/// Carga una clase en la Máquina Virtual global a partir de sus bytes binarios.
+#[no_mangle]
+pub unsafe extern "C" fn j2me_core_vm_load_class(bytes: *const u8, length: usize) -> i32 {
+    if bytes.is_null() || length == 0 {
+        return -1;
+    }
+    let slice = std::slice::from_raw_parts(bytes, length);
+    let class_file = match JavaClassFile::parse(slice) {
+        Ok(cf) => cf,
+        Err(_) => return -2,
+    };
+
+    let mut vm_lock = match CURRENT_VM.lock() {
+        Ok(l) => l,
+        Err(_) => return -3,
+    };
+
+    if vm_lock.is_none() {
+        *vm_lock = Some(VirtualMachine::new());
+    }
+
+    if let Some(ref mut vm) = *vm_lock {
+        vm.load_class(class_file);
+        0
+    } else {
+        -4
+    }
+}
+
+/// Ejecuta un método de una clase en la VM global (resolviendo llamadas anidadas en el Heap).
+#[no_mangle]
+pub unsafe extern "C" fn j2me_core_vm_execute_method(
+    class_name: *const c_char,
+    method_name: *const c_char,
+    descriptor: *const c_char,
+    out_result: *mut i32,
+) -> i32 {
+    if class_name.is_null() || method_name.is_null() || descriptor.is_null() {
+        return -1;
+    }
+
+    let c_cname = match CStr::from_ptr(class_name).to_str() {
+        Ok(s) => s,
+        Err(_) => return -2,
+    };
+    let c_mname = match CStr::from_ptr(method_name).to_str() {
+        Ok(s) => s,
+        Err(_) => return -2,
+    };
+    let c_desc = match CStr::from_ptr(descriptor).to_str() {
+        Ok(s) => s,
+        Err(_) => return -2,
+    };
+
+    let mut vm_lock = match CURRENT_VM.lock() {
+        Ok(l) => l,
+        Err(_) => return -3,
+    };
+
+    if vm_lock.is_none() {
+        *vm_lock = Some(VirtualMachine::new());
+    }
+
+    let vm = vm_lock.as_mut().unwrap();
+    match vm.execute_method(c_cname, c_mname, c_desc, Vec::new(), 200_000) {
+        Ok(ExecutionResult::ReturnValue(Value::Int(v))) => {
+            if !out_result.is_null() {
+                *out_result = v;
+            }
+            0
+        }
+        Ok(ExecutionResult::ReturnVoid) => {
+            if !out_result.is_null() {
+                *out_result = 0;
+            }
+            0
+        }
+        Ok(ExecutionResult::Continue) => -4,
+        Ok(_) => 0,
+        Err(_) => -5,
+    }
+}
+
+/// Retorna estadísticas diagnósticas de la VM (clases cargadas, objetos y arrays en el Heap) en JSON.
+#[no_mangle]
+pub extern "C" fn j2me_core_vm_get_stats() -> *mut c_char {
+    let vm_lock = match CURRENT_VM.lock() {
+        Ok(l) => l,
+        Err(_) => return std::ptr::null_mut(),
+    };
+
+    let (classes_count, objects_count, arrays_count) = match vm_lock.as_ref() {
+        Some(vm) => (
+            vm.loaded_classes.len(),
+            vm.heap.object_count(),
+            vm.heap.array_count(),
+        ),
+        None => (0, 0, 0),
+    };
+
+    let json = format!(
+        "{{\"loadedClasses\":{},\"heapObjects\":{},\"heapArrays\":{},\"vmStatus\":\"Active\"}}",
+        classes_count, objects_count, arrays_count
+    );
+
+    match CString::new(json) {
+        Ok(c_str) => c_str.into_raw(),
+        Err(_) => std::ptr::null_mut(),
+    }
+}
+
 

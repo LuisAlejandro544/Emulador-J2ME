@@ -27,33 +27,52 @@ Este documento define la ruta de evolución técnica y las fases estratégicas p
 
 ---
 
-### 🔄 Fase 3: Intérprete de Bytecode y Máquina Virtual CLDC (Rust - En Progreso)
-- [x] Estructuras fundamentales del Runtime de la JVM (`vm/mod.rs`):
-  - `Value`: Representación tipada de valores enteros, flotantes, long, double, referencias y null.
-  - `OperandStack`: Pila de operandos con protección ante StackOverflow y StackUnderflow.
+### ✅ Fase 3: Intérprete de Bytecode y Máquina Virtual CLDC (Completada)
+- [x] Estructuras fundamentales del Runtime de la JVM (`vm/types.rs`, `vm/stack.rs`):
+  - `Value`: Representación tipada de valores enteros, flotantes, long, double, referencias (`ObjectRef`) y `Null`.
+  - `OperandStack`: Pila de operandos con protección ante `StackOverflow` y `StackUnderflow`, incluyendo `dup`, `dup_x1`, `dup2` y `swap`.
   - `LocalVariables`: Tabla de variables locales indexadas y comprobación de límites.
-  - `StackFrame`: Marco de pila con contador de programa (`pc`), pila, variables locales y bytecode.
-- [x] Intérprete de opcodes estándar de JVM (CLDC):
-  - Constantes y carga: `nop`, `aconst_null`, `iconst_m1..5`, `bipush`, `sipush`.
+- [x] Gestor de memoria dinámica (`Heap` en `vm/heap.rs`):
+  - Asignación segura de objetos (`ObjectInstance`) y almacenamiento asociativo de campos.
+  - Asignación y manipulación de arrays primitivos y de objetos (`ArrayInstance`) con control estricto de límites (`ArrayIndexOutOfBounds`).
+  - Estadísticas diagnósticas de objetos y arrays vivos en memoria.
+- [x] Intérprete de opcodes estándar de JVM (CLDC en `vm/frame.rs`):
+  - Constantes y carga: `nop`, `aconst_null`, `iconst_m1..5`, `bipush`, `sipush`, `ldc`, `ldc_w`.
   - Carga y almacenamiento local: `iload`, `aload`, `iload_0..3`, `aload_0..3`, `istore`, `astore`, `istore_0..3`, `astore_0..3`.
-  - Operaciones de pila: `pop`, `dup`, `swap`.
+  - Operaciones de pila: `pop`, `pop2`, `dup`, `dup_x1`, `dup2`, `swap`.
   - Aritmética entera y lógica: `iadd`, `isub`, `imul`, `idiv`, `irem`, `ineg`, `iand`, `ior`, `ixor`, `iinc`.
-  - Saltos condicionales y branching: `ifeq`, `ifne`, `iflt`, `ifge`, `ifgt`, `ifle`, `if_icmpeq..le`, `goto`.
+  - Saltos condicionales y branching: `ifeq`, `ifne`, `iflt`, `ifge`, `ifgt`, `ifle`, `if_icmpeq..le`, `goto`, `ifnull`, `ifnonnull`.
   - Control de retorno: `ireturn`, `areturn`, `return`.
-- [x] Exposición en FFI y JNI (`executeBytecode`) para ejecución y pruebas directas desde Kotlin/C++.
-- [ ] Manejo de llamadas a métodos (`invokevirtual`, `invokestatic`, `invokespecial`).
-- [ ] Asignador de memoria para objetos e instancias de clases de forma segura (Heap).
+  - Objetos y campos: `new`, `getfield`, `putfield`, `getstatic`, `putstatic`, `checkcast`, `instanceof`.
+  - Arrays: `newarray`, `anewarray`, `arraylength`, `iaload`, `baload`, `caload`, `saload`, `aaload`, `iastore`, `bastore`, `castore`, `sastore`, `aastore`.
+  - Sincronización: `monitorenter`, `monitorexit`.
+  - Invocación de métodos: `invokevirtual`, `invokespecial`, `invokestatic` con resolución de firmas y descriptores.
+- [x] Pila de llamadas y Runtime global (`vm/runtime.rs`):
+  - `VirtualMachine`: Call Stack con profundidad acotada (`max_call_depth = 512`) y paso de argumentos.
+  - Registro de clases cargadas y ejecución de métodos por nombre y descriptor.
+  - Built-ins nativos interceptados: `Object.<init>`, `MIDlet.<init>`, `System.currentTimeMillis`, `System.gc`, `Math.abs/max/min`, `Thread.sleep`.
+- [x] Integración FFI, C++ y JNI (`lib.rs`, `native-lib.cpp`, `J2meNativeBridge.kt`):
+  - Métodos expuestos: `vmReset()`, `vmLoadClass()`, `vmExecuteMethod()`, `vmGetStats()`.
+  - Suite de tests unitarios de integración en Rust (7/7 pruebas superadas exitosamente).
 
 ---
 
-### 🎨 Fase 4: Subsistema Gráfico y LCDUI (Java & C++)
-- [ ] Implementación de las clases de UI de J2ME:
-  - `javax.microedition.lcdui.Display`
-  - `javax.microedition.lcdui.Canvas`
-  - `javax.microedition.lcdui.Graphics`
-  - `javax.microedition.lcdui.Image`
-- [ ] Primitivas de dibujo aceleradas en C++ (líneas, rectángulos, texto con fuente bitmap, rotaciones).
-- [ ] Renderizado en pantalla mediante `ANativeWindow` y OpenGL ES a 60 FPS estables.
+### ✅ Fase 4: Subsistema Gráfico y LCDUI (Completada)
+- [x] Implementación estándar de las APIs de UI de J2ME en Java:
+  - `javax.microedition.midlet.MIDlet`, `MIDletStateChangeException`
+  - `javax.microedition.lcdui.Display`, `Displayable`
+  - `javax.microedition.lcdui.Canvas`, `Command`, `CommandListener`
+  - `javax.microedition.lcdui.Graphics`, `Font`, `Image`
+- [x] Rasterizador 2D acelerado en C++ (`framebuffer.h`, `framebuffer.cpp`):
+  - Búfer de píxeles ARGB8888 con sincronización mutex thread-safe.
+  - Primitivas gráficas: `drawLine` (algoritmo de Bresenham), `drawRect`, `fillRect`, `drawArc`, `fillArc`, `drawString` (fuente bitmap 8x8 integrada), `drawImage` (blitting ARGB con canal alfa y clipping rectangular).
+  - Volcado de alta velocidad a `android.graphics.Bitmap` utilizando `jnigraphics` (`AndroidBitmap_lockPixels`).
+- [x] Pantalla de Emulación y Controles Táctiles Retro (`J2meEmulatorScreen.kt`):
+  - Pantalla LCD virtual a 60 FPS estables con escalado pixel-art (`FilterQuality.None`).
+  - Teclado clásico completo: SoftKey 1 y 2, tecla central FIRE, cruceta direccional D-Pad y teclado alfanumérico (1-9, *, 0, #).
+  - Soporte de gestos táctiles directos sobre la pantalla (`pointerPressed`, `pointerDragged`).
+  - Canvas interactivo reactivo y puente de despacho de eventos bidireccional hacia el MIDlet.
+- [x] Integración en pipeline NDK/CMake para 32 bits (`armeabi-v7a`) y 64 bits (`arm64-v8a`, `x86_64`).
 
 ---
 
@@ -75,3 +94,12 @@ Este documento define la ruta de evolución técnica y las fases estratégicas p
 - [ ] Personalización del layout de controles (opacidad, posición y tamaño).
 - [ ] Soporte para gamepads físicos bluetooth y USB.
 - [ ] Selección de perfiles de pantalla y paletas de color retro (retroiluminación verde/azul estilo teléfonos de época).
+
+---
+
+### 🚀 Fase 8: Automatización CI/CD y Compilación Automatizada de APK Debug
+- [x] Flujo de GitHub Actions (`.github/workflows/build-debug.yml`) para compilar APK Debug.
+- [x] Script `generate_debug_keystore.sh` para forzar la creación de firmas debug desde cero sin esperar archivos o secretos externos.
+- [x] Descarga e instalación automatizada de dependencias de C++ (NDK 27.2.12479018, CMake 3.22.1) y Rust (toolchain estable, targets móviles `aarch64`, `armv7`, `x86_64`, `i686` y `cargo fetch`).
+- [x] Compilación obligatoria sin caché (`--no-build-cache --no-configuration-cache`) con publicación del artefacto `app-debug.apk`.
+

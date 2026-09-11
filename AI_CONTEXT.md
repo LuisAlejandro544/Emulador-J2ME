@@ -27,3 +27,17 @@ Este documento contiene el contexto de dominio, restricciones arquitectónicas e
 5. **Licencias y Privacidad**:
    - No utilizar librerías de terceros que obliguen a usar licencias virales restrictivas como GPLv3 que fuercen la apertura del código si el usuario no lo desea, ni librerías que requieran atribuciones forzadas.
    - No incluir nombres comerciales registrados o marcas protegidas por derechos de autor que puedan representar un riesgo legal.
+
+6. **Estado del Motor y Máquina Virtual**:
+   - El núcleo en Rust tiene completado el parser de JAR/ZIP (`jar_parser`), el parser de ClassFile (`class_parser`), la memoria dinámica Heap (`vm/heap`), el despacho de opcodes e invocación de métodos (`vm/frame`), y la Máquina Virtual con Call Stack (`vm/runtime`).
+   - Todo cambio o adición posterior debe respetar la modularidad de `vm/` y mantener las llamadas FFI/JNI sincronizadas con `native-lib.cpp` y `J2meNativeBridge.kt`.
+
+7. **Subsistema Gráfico y LCDUI (Fase 4 Completada)**:
+   - La capa Java proporciona la API estándar de J2ME (`javax.microedition.lcdui.*` y `midlet.*`), implementando `Canvas`, `Graphics`, `Display`, `Image`, `Font` y `Command`.
+   - Las operaciones de rasterizado pesado (Bresenham para líneas, rectángulos, arcos, clipping y texto con fuente bitmap 8x8) se ejecutan en C++ con un `Framebuffer` nativo ARGB8888 sincronizado con mutex.
+   - La pantalla Compose `J2meEmulatorScreen` vuelca el búfer de píxeles nativo a 60 FPS mediante `jnigraphics` (`AndroidBitmap_lockPixels`) con escalado pixel-art y procesa eventos de teclado físico/virtual y toques directos.
+
+8. **Pipeline CI/CD y Generación Automática de Firmas Debug**:
+   - `.github/workflows/build-debug.yml` implementa el flujo oficial para compilar el APK Debug completo en GitHub Actions sin requerir caché (`--no-build-cache --no-configuration-cache`).
+   - El script `generate_debug_keystore.sh` genera un `debug.keystore` autofirmado desde cero sin requerir archivos externos ni contraseñas interactivas, garantizando compilaciones desatendidas y reproducibles tanto en CI como en entornos locales.
+

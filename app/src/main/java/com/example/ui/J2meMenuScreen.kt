@@ -100,6 +100,16 @@ fun J2meMenuScreen(
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
 
+    // Si hay un juego activo en ejecución, mostrar la pantalla del emulador LCDUI
+    if (uiState.activeRunningGame != null) {
+        J2meEmulatorScreen(
+            game = uiState.activeRunningGame!!,
+            onClose = { viewModel.closeRunningGame() },
+            modifier = modifier
+        )
+        return
+    }
+
     // Launcher de SAF (Storage Access Framework) para abrir el explorador de archivos nativo de Android
     val jarFilePickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocument()
@@ -313,6 +323,7 @@ fun J2meMenuScreen(
                             GameItemCard(
                                 game = game,
                                 onClick = { viewModel.onGameSelected(game) },
+                                onPlay = { viewModel.launchGame(game) },
                                 onDelete = { viewModel.requestDeleteGame(game) }
                             )
                         }
@@ -358,7 +369,8 @@ fun J2meMenuScreen(
     uiState.selectedGame?.let { game ->
         GameDetailsDialog(
             game = game,
-            onDismiss = { viewModel.dismissGameDetail() }
+            onDismiss = { viewModel.dismissGameDetail() },
+            onPlay = { viewModel.launchGame(game) }
         )
     }
 
@@ -411,6 +423,7 @@ fun J2meMenuScreen(
 private fun GameItemCard(
     game: J2meGame,
     onClick: () -> Unit,
+    onPlay: () -> Unit,
     onDelete: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -516,7 +529,7 @@ private fun GameItemCard(
 
             // Botón rápido para iniciar/seleccionar
             IconButton(
-                onClick = onClick,
+                onClick = onPlay,
                 modifier = Modifier
                     .size(40.dp)
                     .background(
@@ -701,7 +714,8 @@ private fun EmptyGamesView(
 @Composable
 private fun GameDetailsDialog(
     game: J2meGame,
-    onDismiss: () -> Unit
+    onDismiss: () -> Unit,
+    onPlay: () -> Unit
 ) {
     val dateFormatted = remember(game.addedTimestamp) {
         val sdf = SimpleDateFormat("dd/MM/yyyy HH:mm", Locale.getDefault())
@@ -752,7 +766,7 @@ private fun GameDetailsDialog(
 
                 Spacer(modifier = Modifier.height(6.dp))
 
-                // Tarjeta informativa sobre el estado base del emulador
+                // Tarjeta informativa sobre el subsistema gráfico y LCDUI
                 Surface(
                     shape = RoundedCornerShape(12.dp),
                     color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f),
@@ -767,20 +781,20 @@ private fun GameDetailsDialog(
                         horizontalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
                         Icon(
-                            imageVector = Icons.Default.Info,
+                            imageVector = Icons.Default.SportsEsports,
                             contentDescription = null,
                             tint = MaterialTheme.colorScheme.primary,
                             modifier = Modifier.size(20.dp)
                         )
                         Column {
                             Text(
-                                text = "Base del Emulador Lista",
+                                text = "Subsistema LCDUI y Pantalla Listos",
                                 fontWeight = FontWeight.SemiBold,
                                 fontSize = 13.sp,
                                 color = MaterialTheme.colorScheme.primary
                             )
                             Text(
-                                text = "Juego importado y verificado en la biblioteca. La ejecución del MIDlet se incorporará en el siguiente paso.",
+                                text = "Framebuffer nativo a 60 FPS con aceleración C++ y APIs de dibujo Java (Canvas, Graphics, Display). Puedes iniciar la emulación de inmediato.",
                                 fontSize = 12.sp,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 lineHeight = 16.sp
@@ -792,10 +806,28 @@ private fun GameDetailsDialog(
         },
         confirmButton = {
             Button(
+                onClick = onPlay,
+                shape = RoundedCornerShape(10.dp),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = MaterialTheme.colorScheme.primary
+                ),
+                modifier = Modifier.testTag("play_game_button")
+            ) {
+                Icon(
+                    imageVector = Icons.Default.PlayArrow,
+                    contentDescription = null,
+                    modifier = Modifier.size(18.dp)
+                )
+                Spacer(modifier = Modifier.width(6.dp))
+                Text("Jugar Ahora")
+            }
+        },
+        dismissButton = {
+            TextButton(
                 onClick = onDismiss,
                 shape = RoundedCornerShape(10.dp)
             ) {
-                Text("Entendido")
+                Text("Cerrar")
             }
         }
     )

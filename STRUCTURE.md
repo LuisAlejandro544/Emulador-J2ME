@@ -13,9 +13,13 @@ Este documento detalla la estructura física y lógica de directorios del proyec
 ├── STRUCTURE.md                   # Este documento (mapa del proyecto)
 ├── AI_CONTEXT.md                  # Contexto y directrices de IA
 ├── AGENTS.md                      # Reglas de comportamiento para agentes
+├── generate_debug_keystore.sh     # Script que genera debug.keystore desde cero para CI y local
 ├── clean_native_artifacts.sh      # Script Bash para purgar artefactos de C++ y Rust
 ├── clean_native_artifacts.py      # Script Python equivalente para purga
 ├── .gitignore                     # Filtros de exclusión de Git (blindado contra artefactos)
+├── .github/
+│   └── workflows/
+│       └── build-debug.yml        # Pipeline CI/CD GitHub Actions para compilar APK Debug sin caché
 ├── build.gradle.kts               # Configuración Gradle raíz
 ├── settings.gradle.kts            # Módulos del proyecto
 │
@@ -26,24 +30,29 @@ Este documento detalla la estructura física y lógica de directorios del proyec
             ├── AndroidManifest.xml # Manifiesto de permisos y actividades
             │
             ├── java/              # Capa Java / Android
-            │   └── com/example/
-            │       ├── MainActivity.kt        # Actividad principal contenedora
-            │       ├── ui/
-            │       │   ├── J2meMenuScreen.kt  # Interfaz del emulador (pantalla retro y controles)
-            │       │   ├── J2meNativeBridge.kt# Puente JNI que enlaza con C++ y Rust
-            │       │   ├── J2meManifestInfo.kt# Modelo de datos para metadatos MIDlet parseados
-            │       │   └── theme/             # Sistema de diseño y temas visuales
-            │       └── javax/                 # (Próximo) Implementación de APIs J2ME en Java
-            │           └── microedition/
-            │               ├── midlet/        # Ciclo de vida MIDlet
-            │               ├── lcdui/         # Gráficos y pantalla (Canvas, Graphics)
-            │               ├── media/         # Audio y reproducción
-            │               └── rms/           # Persistencia RecordStore
+            │   ├── com/example/
+            │   │   ├── MainActivity.kt        # Actividad principal contenedora
+            │   │   ├── ui/
+            │   │   │   ├── J2meMenuScreen.kt      # Biblioteca y explorador de juegos .jar
+            │   │   │   ├── J2meEmulatorScreen.kt  # Pantalla de emulación LCDUI a 60 FPS y teclado retro
+            │   │   │   ├── J2meMenuViewModel.kt   # ViewModel de gestión de biblioteca y estado activo
+            │   │   │   ├── J2meNativeBridge.kt    # Declaraciones JNI que enlazan con C++ y Rust
+            │   │   │   ├── J2meManifestInfo.kt    # Modelo de datos para metadatos MIDlet parseados
+            │   │   │   └── theme/                 # Sistema de diseño y temas visuales
+            │   │   ├── data/                      # Persistencia Room (J2meGame, Dao, Database, Repo)
+            │   │   └── util/                      # Parser y utilidades SAF
+            │   └── javax/                         # Implementación de APIs estándar J2ME en Java
+            │       └── microedition/
+            │           ├── midlet/                # MIDlet y MIDletStateChangeException
+            │           ├── lcdui/                 # Canvas, Graphics, Display, Image, Font, Command
+            │           ├── media/                 # (Próximo) Audio y reproducción
+            │           └── rms/                   # (Próximo) Persistencia RecordStore
             │
-            ├── cpp/               # Capa C++ (Abstracción de Hardware & JNI)
-            │   ├── CMakeLists.txt # Script de compilación de CMake, invoca a Cargo y compila C++
-            │   ├── native-lib.cpp # Implementación de métodos nativos JNI y llamadas FFI (incluye puente JAR)
-            │   └── graphics/      # (Próximo) Renderizador nativo OpenGL ES
+            ├── cpp/               # Capa C++ (Abstracción de Hardware, JNI & Rasterizador)
+            │   ├── CMakeLists.txt # Script de compilación CMake, integra Cargo, C++ y jnigraphics
+            │   ├── native-lib.cpp # Implementación de métodos nativos JNI, FFI y puente gráfico
+            │   ├── framebuffer.h  # Definición del Framebuffer nativo ARGB8888 y primitivas 2D
+            │   └── framebuffer.cpp# Implementación del rasterizador 2D, Bresenham y volcado Bitmap
             │
             ├── rust/              # Capa Rust (Núcleo de la Máquina Virtual)
             │   └── j2me_core/
@@ -51,11 +60,16 @@ Este documento detalla la estructura física y lógica de directorios del proyec
             │       ├── .cargo/
             │       │   └── config.toml # Linkers de NDK para ARM32, ARM64, x86, x86_64
             │       └── src/
-            │           ├── lib.rs          # Punto de entrada FFI con C (`extern "C"`)
+            │           ├── lib.rs          # Punto de entrada FFI con C (`extern "C"`) y runtime global
             │           ├── jar_parser.rs   # Parser seguro de archivos JAR, ZIP y MANIFEST.MF
             │           ├── class_parser.rs # Parser binario de archivos .class, Constant Pool y Code
-            │           └── vm/
-            │               └── mod.rs      # Pila de operandos, variables locales, StackFrame e intérprete de opcodes
+            │           └── vm/             # Arquitectura modular de la Máquina Virtual CLDC
+            │               ├── mod.rs      # Re-exportaciones y tests de integración
+            │               ├── types.rs    # Definiciones de Value, VmError, ExecutionResult y ArrayType
+            │               ├── stack.rs    # Pila de operandos (OperandStack) y variables locales (LocalVariables)
+            │               ├── heap.rs     # Gestor de memoria dinámica (Heap), objetos y arrays tipados
+            │               ├── frame.rs    # Marco de activación (StackFrame), Constant Pool y opcodes
+            │               └── runtime.rs  # Máquina Virtual (VirtualMachine), Call Stack y built-ins nativos
             │
             └── res/               # Recursos de interfaz (iconos, temas, layouts)
 ```
