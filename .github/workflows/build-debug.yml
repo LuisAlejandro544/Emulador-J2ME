@@ -53,6 +53,13 @@ jobs:
             x86_64-linux-android
             i686-linux-android
 
+      - name: Configurar variables de entorno de Rust y Cargo
+        run: |
+          mkdir -p "$HOME/.cargo" "$HOME/.rustup"
+          echo "CARGO_HOME=$HOME/.cargo" >> $GITHUB_ENV
+          echo "RUSTUP_HOME=$HOME/.rustup" >> $GITHUB_ENV
+          echo "$HOME/.cargo/bin" >> $GITHUB_PATH
+
       # 5. Descargar dependencias de Rust anticipadamente
       - name: Descargar dependencias de Rust (Cargo Fetch)
         working-directory: app/src/main/rust/j2me_core

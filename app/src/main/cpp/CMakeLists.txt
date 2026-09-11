@@ -34,13 +34,32 @@ endif()
 set(RUST_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../rust/j2me_core")
 set(RUST_LIB_PATH "${RUST_DIR}/target/${RUST_TARGET}/release/libj2me_core.a")
 
+# Configuración dinámica del entorno de Rust (evita hardcodear /root que provoca error de permisos en CI y multiusuario)
+if(DEFINED ENV{HOME} AND NOT "$ENV{HOME}" STREQUAL "")
+    set(EFFECTIVE_HOME "$ENV{HOME}")
+else()
+    set(EFFECTIVE_HOME "/root")
+endif()
+
+if(DEFINED ENV{CARGO_HOME} AND NOT "$ENV{CARGO_HOME}" STREQUAL "")
+    set(EFFECTIVE_CARGO_HOME "$ENV{CARGO_HOME}")
+else()
+    set(EFFECTIVE_CARGO_HOME "${EFFECTIVE_HOME}/.cargo")
+endif()
+
+if(DEFINED ENV{RUSTUP_HOME} AND NOT "$ENV{RUSTUP_HOME}" STREQUAL "")
+    set(EFFECTIVE_RUSTUP_HOME "$ENV{RUSTUP_HOME}")
+else()
+    set(EFFECTIVE_RUSTUP_HOME "${EFFECTIVE_HOME}/.rustup")
+endif()
+
 # Detección de fuentes en Rust para recompilación automática cuando cambien
 file(GLOB_RECURSE RUST_SOURCES "${RUST_DIR}/src/*.rs" "${RUST_DIR}/Cargo.toml")
 
 # Comando para invocar Cargo y compilar el núcleo en Rust de manera automática
 add_custom_command(
     OUTPUT "${RUST_LIB_PATH}"
-    COMMAND ${CMAKE_COMMAND} -E env "HOME=/root" "RUSTUP_HOME=/root/.rustup" "CARGO_HOME=/root/.cargo" "PATH=/root/.cargo/bin:$ENV{PATH}" "${RUST_LINKER_ENV}" cargo build --manifest-path "${RUST_DIR}/Cargo.toml" --target "${RUST_TARGET}" --release
+    COMMAND ${CMAKE_COMMAND} -E env "HOME=${EFFECTIVE_HOME}" "RUSTUP_HOME=${EFFECTIVE_RUSTUP_HOME}" "CARGO_HOME=${EFFECTIVE_CARGO_HOME}" "PATH=${EFFECTIVE_CARGO_HOME}/bin:$ENV{PATH}" "${RUST_LINKER_ENV}" cargo build --manifest-path "${RUST_DIR}/Cargo.toml" --target "${RUST_TARGET}" --release
     WORKING_DIRECTORY "${RUST_DIR}"
     DEPENDS ${RUST_SOURCES}
     COMMENT "Compilando núcleo J2ME en Rust para arquitectura ${ANDROID_ABI} (${RUST_TARGET})..."

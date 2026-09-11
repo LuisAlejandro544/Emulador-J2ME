@@ -40,4 +40,5 @@ Este documento contiene el contexto de dominio, restricciones arquitectónicas e
 8. **Pipeline CI/CD y Generación Automática de Firmas Debug**:
    - `.github/workflows/build-debug.yml` implementa el flujo oficial para compilar el APK Debug completo en GitHub Actions sin requerir caché (`--no-build-cache --no-configuration-cache`).
    - El script `generate_debug_keystore.sh` genera un `debug.keystore` autofirmado desde cero sin requerir archivos externos ni contraseñas interactivas, garantizando compilaciones desatendidas y reproducibles tanto en CI como en entornos locales.
+   - `CMakeLists.txt` resuelve dinámicamente las rutas de `$HOME`, `$CARGO_HOME` y `$RUSTUP_HOME` según el usuario en ejecución, evitando fallos de permisos (`Permission denied /root/.rustup`) en runners no-root como GitHub Actions (`runner`).
 
