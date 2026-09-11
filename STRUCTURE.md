@@ -40,11 +40,12 @@ Este documento detalla la estructura física y lógica de directorios del proyec
             │   │   │   ├── J2meManifestInfo.kt    # Modelo de datos para metadatos MIDlet parseados
             │   │   │   └── theme/                 # Sistema de diseño y temas visuales
             │   │   ├── data/                      # Persistencia Room (J2meGame, Dao, Database, Repo)
-            │   │   └── util/                      # Parser y utilidades SAF
+            │   │   └── util/                      # Parser SAF y J2meResourceManager (recursos del JAR)
             │   └── javax/                         # Implementación de APIs estándar J2ME en Java
             │       └── microedition/
             │           ├── midlet/                # MIDlet y MIDletStateChangeException
             │           ├── lcdui/                 # Canvas, Graphics, Display, Image, Font, Command
+            │           │   └── game/              # GameCanvas, Layer, Sprite, TiledLayer, LayerManager (MIDP 2.0)
             │           ├── media/                 # (Próximo) Audio y reproducción
             │           └── rms/                   # (Próximo) Persistencia RecordStore
             │
@@ -69,7 +70,7 @@ Este documento detalla la estructura física y lógica de directorios del proyec
             │               ├── stack.rs    # Pila de operandos (OperandStack) y variables locales (LocalVariables)
             │               ├── heap.rs     # Gestor de memoria dinámica (Heap), objetos y arrays tipados
             │               ├── frame.rs    # Marco de activación (StackFrame), Constant Pool y opcodes
-            │               └── runtime.rs  # Máquina Virtual (VirtualMachine), Call Stack y built-ins nativos
+            │               └── runtime.rs  # Máquina Virtual (VirtualMachine), ClassLoader automático de JAR y Threading
             │
             └── res/               # Recursos de interfaz (iconos, temas, layouts)
 ```

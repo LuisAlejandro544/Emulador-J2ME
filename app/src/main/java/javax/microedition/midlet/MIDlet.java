@@ -83,4 +83,12 @@ public abstract class MIDlet {
     public static MIDlet getActiveMIDlet() {
         return activeMIDlet;
     }
+
+    /**
+     * Carga un recurso interno del archivo JAR como un flujo binario InputStream.
+     * Facilita la carga de mapas, sonidos y tablas de datos desde el juego.
+     */
+    public static java.io.InputStream getResourceAsStream(String name) {
+        return com.example.util.J2meResourceManager.getResourceAsStream(name);
+    }
 }

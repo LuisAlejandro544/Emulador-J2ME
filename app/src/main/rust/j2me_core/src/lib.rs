@@ -438,6 +438,16 @@ pub unsafe extern "C" fn j2me_core_vm_execute_method(
     }
 
     let vm = vm_lock.as_mut().unwrap();
+
+    // Sincronizar los bytes del JAR activo en la VM para el ClassLoader automático
+    if vm.jar_bytes.is_none() {
+        if let Ok(jar_lock) = CURRENT_JAR_DATA.lock() {
+            if let Some(ref data) = *jar_lock {
+                vm.set_jar_bytes(data.clone());
+            }
+        }
+    }
+
     match vm.execute_method(c_cname, c_mname, c_desc, Vec::new(), 200_000) {
         Ok(ExecutionResult::ReturnValue(Value::Int(v))) => {
             if !out_result.is_null() {

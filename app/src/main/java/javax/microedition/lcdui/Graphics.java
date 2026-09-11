@@ -292,6 +292,21 @@ public class Graphics {
         drawRGB(img.getInternalPixels(), 0, w, posX, posY, w, h, true);
     }
 
+    public void drawRegion(Image src, int x_src, int y_src, int width, int height,
+                           int transform, int x_dest, int y_dest, int anchor) {
+        if (src == null) {
+            throw new NullPointerException("Imagen origen nula en drawRegion");
+        }
+        if (width <= 0 || height <= 0 ||
+            x_src < 0 || y_src < 0 ||
+            x_src + width > src.getWidth() || y_src + height > src.getHeight()) {
+            throw new IllegalArgumentException("Área de corte de drawRegion fuera de límites");
+        }
+
+        Image subImg = Image.createImage(src, x_src, y_src, width, height, transform);
+        drawImage(subImg, x_dest, y_dest, anchor);
+    }
+
     public void drawRGB(int[] rgbData, int offset, int scanlength,
                         int x, int y, int width, int height, boolean processAlpha) {
         if (rgbData == null || width <= 0 || height <= 0) return;

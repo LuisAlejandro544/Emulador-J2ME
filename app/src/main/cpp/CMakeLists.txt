@@ -59,7 +59,7 @@ file(GLOB_RECURSE RUST_SOURCES "${RUST_DIR}/src/*.rs" "${RUST_DIR}/Cargo.toml")
 # Comando para invocar Cargo y compilar el núcleo en Rust de manera automática
 add_custom_command(
     OUTPUT "${RUST_LIB_PATH}"
-    COMMAND ${CMAKE_COMMAND} -E env "HOME=${EFFECTIVE_HOME}" "RUSTUP_HOME=${EFFECTIVE_RUSTUP_HOME}" "CARGO_HOME=${EFFECTIVE_CARGO_HOME}" "PATH=${EFFECTIVE_CARGO_HOME}/bin:$ENV{PATH}" "${RUST_LINKER_ENV}" cargo build --manifest-path "${RUST_DIR}/Cargo.toml" --target "${RUST_TARGET}" --release
+    COMMAND ${CMAKE_COMMAND} -E env "HOME=${EFFECTIVE_HOME}" "RUSTUP_HOME=${EFFECTIVE_RUSTUP_HOME}" "CARGO_HOME=${EFFECTIVE_CARGO_HOME}" "PATH=${EFFECTIVE_CARGO_HOME}/bin:/root/.cargo/bin:/usr/local/bin:$ENV{PATH}" "${RUST_LINKER_ENV}" cargo build --manifest-path "${RUST_DIR}/Cargo.toml" --target "${RUST_TARGET}" --release
     WORKING_DIRECTORY "${RUST_DIR}"
     DEPENDS ${RUST_SOURCES}
     COMMENT "Compilando núcleo J2ME en Rust para arquitectura ${ANDROID_ABI} (${RUST_TARGET})..."

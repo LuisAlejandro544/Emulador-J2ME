@@ -455,6 +455,65 @@ impl StackFrame {
                 Ok(ExecutionResult::Continue)
             }
 
+            // 0xAA: tableswitch
+            0xAA => {
+                let opcode_pos = self.pc - 1;
+                // Alinear a múltiplo de 4 bytes con respecto al inicio del método
+                let remainder = self.pc % 4;
+                if remainder != 0 {
+                    self.pc += 4 - remainder;
+                }
+
+                let default_offset = self.fetch_i32()? as isize;
+                let low = self.fetch_i32()?;
+                let high = self.fetch_i32()?;
+
+                let key = self.stack.pop_int()?;
+                if key >= low && key <= high {
+                    let jump_index = (key - low) as usize;
+                    // Avanzar al offset correspondiente
+                    self.pc += jump_index * 4;
+                    let target_offset = self.fetch_i32()? as isize;
+                    self.pc = (opcode_pos as isize + target_offset) as usize;
+                } else {
+                    self.pc = (opcode_pos as isize + default_offset) as usize;
+                }
+                Ok(ExecutionResult::Continue)
+            }
+
+            // 0xAB: lookupswitch
+            0xAB => {
+                let opcode_pos = self.pc - 1;
+                // Alinear a múltiplo de 4 bytes con respecto al inicio del método
+                let remainder = self.pc % 4;
+                if remainder != 0 {
+                    self.pc += 4 - remainder;
+                }
+
+                let default_offset = self.fetch_i32()? as isize;
+                let npairs = self.fetch_i32()?;
+                let key = self.stack.pop_int()?;
+
+                let mut matched_offset: Option<isize> = None;
+                for _ in 0..npairs {
+                    let match_val = self.fetch_i32()?;
+                    let offset = self.fetch_i32()? as isize;
+                    if match_val == key && matched_offset.is_none() {
+                        matched_offset = Some(offset);
+                    }
+                }
+
+                match matched_offset {
+                    Some(offset) => {
+                        self.pc = (opcode_pos as isize + offset) as usize;
+                    }
+                    None => {
+                        self.pc = (opcode_pos as isize + default_offset) as usize;
+                    }
+                }
+                Ok(ExecutionResult::Continue)
+            }
+
             // 0xAC: ireturn
             0xAC => {
                 let val = self.stack.pop()?;
@@ -595,6 +654,35 @@ impl StackFrame {
                     method_name: mname.to_string(),
                     descriptor: desc.to_string(),
                     is_static: true,
+                    args,
+                })
+            }
+
+            // 0xB9: invokeinterface
+            0xB9 => {
+                let method_idx = self.fetch_u16()?;
+                let _count = self.fetch_u8()?;
+                let _zero = self.fetch_u8()?; // Byte reservado según JVM spec
+
+                let (cname, mname, desc) = resolve_method_ref(&self.constant_pool, method_idx)
+                    .ok_or(VmError::InvalidConstantPoolEntry(method_idx))?;
+                let p_count = parse_descriptor_param_count(desc);
+                let mut args = Vec::with_capacity(p_count + 1);
+                for _ in 0..p_count {
+                    args.push(self.stack.pop()?);
+                }
+                let this_ref = self.stack.pop()?;
+                if this_ref.is_null() {
+                    return Err(VmError::NullPointer);
+                }
+                args.push(this_ref);
+                args.reverse();
+
+                Ok(ExecutionResult::InvokeMethod {
+                    class_name: cname.to_string(),
+                    method_name: mname.to_string(),
+                    descriptor: desc.to_string(),
+                    is_static: false,
                     args,
                 })
             }
@@ -771,6 +859,23 @@ impl StackFrame {
 
     fn fetch_i16(&mut self) -> Result<i16, VmError> {
         self.fetch_u16().map(|v| v as i16)
+    }
+
+    fn fetch_i32(&mut self) -> Result<i32, VmError> {
+        if self.pc + 4 > self.bytecode.len() {
+            return Err(VmError::PcOutOfBounds {
+                pc: self.pc,
+                code_len: self.bytecode.len(),
+            });
+        }
+        let val = i32::from_be_bytes([
+            self.bytecode[self.pc],
+            self.bytecode[self.pc + 1],
+            self.bytecode[self.pc + 2],
+            self.bytecode[self.pc + 3],
+        ]);
+        self.pc += 4;
+        Ok(val)
     }
 
     fn push_constant(&mut self, index: u16, heap: &mut Heap) -> Result<(), VmError> {

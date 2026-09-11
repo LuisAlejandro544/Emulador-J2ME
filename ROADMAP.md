@@ -50,6 +50,8 @@ Este documento define la ruta de evolución técnica y las fases estratégicas p
 - [x] Pila de llamadas y Runtime global (`vm/runtime.rs`):
   - `VirtualMachine`: Call Stack con profundidad acotada (`max_call_depth = 512`) y paso de argumentos.
   - Registro de clases cargadas y ejecución de métodos por nombre y descriptor.
+  - Carga automática de clases en tiempo de ejecución (ClassLoader en Rust) que resuelve bytecode `.class` desde el archivo JAR bajo demanda.
+  - Soporte multihilo y bucle de juego: intercepción de `java/lang/Thread`, asociación de `Runnable`, despacho de `Thread.start()` / `run()` y retardos controlados con `Thread.sleep()`.
   - Built-ins nativos interceptados: `Object.<init>`, `MIDlet.<init>`, `System.currentTimeMillis`, `System.gc`, `Math.abs/max/min`, `Thread.sleep`.
 - [x] Integración FFI, C++ y JNI (`lib.rs`, `native-lib.cpp`, `J2meNativeBridge.kt`):
   - Métodos expuestos: `vmReset()`, `vmLoadClass()`, `vmExecuteMethod()`, `vmGetStats()`.
@@ -68,11 +70,23 @@ Este documento define la ruta de evolución técnica y las fases estratégicas p
   - Primitivas gráficas: `drawLine` (algoritmo de Bresenham), `drawRect`, `fillRect`, `drawArc`, `fillArc`, `drawString` (fuente bitmap 8x8 integrada), `drawImage` (blitting ARGB con canal alfa y clipping rectangular).
   - Volcado de alta velocidad a `android.graphics.Bitmap` utilizando `jnigraphics` (`AndroidBitmap_lockPixels`).
 - [x] Pantalla de Emulación y Controles Táctiles Retro (`J2meEmulatorScreen.kt`):
-  - Pantalla LCD virtual a 60 FPS estables con escalado pixel-art (`FilterQuality.None`).
-  - Teclado clásico completo: SoftKey 1 y 2, tecla central FIRE, cruceta direccional D-Pad y teclado alfanumérico (1-9, *, 0, #).
+  - Cargador real de archivos `.jar` y ejecución automática del ciclo de vida del MIDlet en la VM de Rust.
+  - Diseño a pantalla completa adaptado a teléfonos móviles verticales, maximizando la superficie útil del Framebuffer LCDUI (240x320).
+  - Teclado alfanumérico táctil de gran formato con rotulación de caracteres reales (1, 2: ABC, 3: DEF, 4: GHI, etc.) para pulsación cómoda.
+  - Teclado de funciones retro: LSK (Soft 1), RSK (Soft 2), botón prominente FIRE y cruceta direccional D-Pad espaciosa.
   - Soporte de gestos táctiles directos sobre la pantalla (`pointerPressed`, `pointerDragged`).
-  - Canvas interactivo reactivo y puente de despacho de eventos bidireccional hacia el MIDlet.
+  - Bucle multihilo continuo a 60 FPS con telemetría de rendimiento y actualización reactiva de fotogramas.
 - [x] Integración en pipeline NDK/CMake para 32 bits (`armeabi-v7a`) y 64 bits (`arm64-v8a`, `x86_64`).
+- [x] API de Juegos Estándar MIDP 2.0 (`javax.microedition.lcdui.game.*`):
+  - `GameCanvas`: Lienzo optimizado con doble búfer off-screen (`flushGraphics`), sondeo síncrono de teclas con `getKeyStates()`.
+  - `Sprite`: Animación por cuadros, secuenciador dinámico, 8 transformaciones (rotaciones y espejos) y colisiones AABB y píxel-perfect por canal alfa.
+  - `TiledLayer`: Escenarios en cuadrícula de tiles estáticos y animados con frustum clipping optimizado.
+  - `LayerManager`: Control de profundidad Z-order de capas y cámara de visualización (`setViewWindow`).
+- [x] Motor de Carga de Recursos Internos del JAR (`getResourceAsStream`):
+  - Carga transparente de mapas binarios (`.dat`, `.bin`), texturas PNG, música y tablas de datos empaquetados en el JAR.
+  - Integración en `J2meResourceManager`, `MIDlet.getResourceAsStream()` y `Class.getResourceAsStream()`.
+  - Despacho en el runtime de la VM de Rust con asignación en Heap de `ByteArrayInputStream` e intercepción de llamadas a `InputStream`.
+  - Primitiva gráfica `Graphics.drawRegion` para recorte y rotación/espejo de subimágenes.
 
 ---
 
